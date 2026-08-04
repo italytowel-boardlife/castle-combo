@@ -12,7 +12,7 @@
     <div>
       <p class="eyebrow">CASTLE COMBO</p>
       <h1>점수 계산기</h1>
-      <p>3×3 배열에 놓인 카드를 선택하면 카드별 종료 점수와 열쇠 점수를 자동 계산합니다.</p>
+      <p>기본판과 Out of the Oubliette 확장 카드를 포함해 카드별 종료 점수와 열쇠 점수를 자동 계산합니다.</p>
     </div>
     <button id="resetBtn" class="ghost">전체 초기화</button>
   </header>
@@ -59,6 +59,8 @@
           <li>‘같은 행/열’은 해당 카드가 놓인 행 3장과 열 3장의 합집합이며, 중심 카드는 한 번만 셉니다.</li>
           <li>지갑 카드는 해당 카드에 저장된 금을 직접 입력하세요.</li>
           <li>은행가는 배열의 모든 지갑에 저장된 금 전체를 계산합니다.</li>
+          <li>확장 카드의 잠금 능력을 사용하지 않았다면 해당 카드의 “잠금 열쇠 미사용”을 체크하세요. 게임 종료 시 일반 열쇠에 합산됩니다.</li>
+          <li>뒷면 카드의 인쇄 비용은 행·열 비용 합계와 서로 다른 비용 계산에서 제외됩니다.</li>
         </ul>
       </details>
     </section>
@@ -78,6 +80,7 @@
         <button type="button" data-filter="all" class="active">전체</button>
         <button type="button" data-filter="castle">성</button>
         <button type="button" data-filter="village">마을</button>
+        <button type="button" data-filter="expansion">확장만</button>
       </div>
       <div id="cardList" class="card-list"></div>
       <button id="clearSlotBtn" type="button" class="danger full">이 칸 비우기</button>
@@ -99,6 +102,7 @@
       </button>
       <div class="slot-controls" hidden>
         <label class="face-down-label"><input class="face-down" type="checkbox" /> 뒷면</label>
+        <label class="lock-label" hidden><input class="lock-unused" type="checkbox" checked /> 잠금 열쇠 미사용</label>
         <label class="purse-label" hidden>지갑 금 <input class="purse" type="number" min="0" inputmode="numeric" value="0" /></label>
       </div>
       <div class="slot-score">0점</div>

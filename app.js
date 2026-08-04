@@ -82,11 +82,26 @@ C('Usurper','찬탈자','village',5,['peasant'],'성 카드당 2점',{type:'plac
 C('Vicar','교구사제','village',0,['faith'],'이 지갑의 금 1개당 2점',{type:'purse',per:2},{purse:5}),
 C('Winemaker','포도주 제조자','village',2,['scholar','peasant'],'같은 열의 서로 다른 방패 종류당 2점',{type:'distinctLine',axis:'col',per:2}),
 C('Witch','마녀','village',4,['peasant'],'신앙 방패가 없으면 9점',{type:'missingShield',shield:'faith',points:9}),
-C('Woodcutter','나무꾼','village',0,['peasant'],'오른쪽 열이면 5점',{type:'position',positions:['right'],points:5})
+C('Woodcutter','나무꾼','village',0,['peasant'],'오른쪽 열이면 5점',{type:'position',positions:['right'],points:5}),
+
+// Out of the Oubliette expansion (12 cards). English labels follow the rulebook examples
+// where available; the Dutch card names visible on the supplied cards are included for search.
+C('Sinbad','신드바드','castle',7,['noble'],'같은 행 3장의 인쇄 비용 합계',{type:'rowCostSum'},{expansion:true,dutch:'Sijnbad',lock:true}),
+C('Printer','인쇄공','castle',0,['craft'],'같은 열에 학문 방패가 1개 이상이면 5점',{type:'lineHasShield',axis:'col',shield:'scholar',points:5},{expansion:true,dutch:'Drukker',lock:true}),
+C('Peddler','행상인','village',7,['craft'],'같은 열 3장의 인쇄 비용 합계',{type:'colCostSum'},{expansion:true,dutch:'Marskramer',lock:true}),
+C('Prince of Thieves','도둑들의 왕자','village',4,['peasant'],'잠금 능력 카드 1장당 4점',{type:'lockCards',per:4},{expansion:true,dutch:'Prins der dieven',lock:true}),
+C('Dream Maker','꿈 제작자','castle',8,['noble','faith','scholar'],'서로 다른 인쇄 비용 종류당 3점',{type:'distinctCosts',per:3},{expansion:true,dutch:'Droommaker bij ijzeren vesters',lock:true}),
+C('Concierge','관리인','castle',3,['scholar'],'성 카드 1장당 2점',{type:'placeCards',place:'castle',per:2},{expansion:true,dutch:'Conciërge',lock:true}),
+C('Art Forger','미술품 위조범','village',4,['scholar'],'같은 행에 군사 방패가 1개 이상이면 7점',{type:'lineHasShield',axis:'row',shield:'military',points:7},{expansion:true,dutch:'Kunstvervalser',lock:true}),
+C('King of Beggars','거지들의 왕','village',5,['military','craft','peasant'],'뒷면 카드가 없으면 12점',{type:'noFaceDown',points:12},{expansion:true,dutch:'Koning der bedelaars',lock:true}),
+C('Conspirator','공모자','castle',1,['faith'],'할인 능력 카드가 없으면 8점',{type:'noDiscounts',points:8},{expansion:true,dutch:'Samenzweerder',lock:true}),
+C("Queen's Confidante",'여왕의 측근','castle',0,['military'],'같은 행에 신앙 방패가 1개 이상이면 5점',{type:'lineHasShield',axis:'row',shield:'faith',points:5},{expansion:true,dutch:'Vertrouweling van de koningin',lock:true}),
+C('Pickpocket','소매치기','village',3,['military'],'지갑 점수 카드가 없으면 10점',{type:'noPurseCards',points:10},{expansion:true,dutch:'Zakkenroller',lock:true}),
+C('Fortune Teller','점술가','village',1,['peasant','peasant'],'같은 열에 귀족 방패가 1개 이상이면 3점',{type:'lineHasShield',axis:'col',shield:'noble',points:3},{expansion:true,dutch:'Waarzegster',lock:true}),
 ];
 
 const discountIds=new Set(['alchemist','apothecary','architect','armorer','astronomer','baron','captain','chatelaine','farmhand','fisherman','philosopher','pilgrim','princess','squire','stonemason']);
-const state={slots:Array.from({length:9},()=>({cardId:null,faceDown:false,purse:0})),keys:0};
+const state={slots:Array.from({length:9},()=>({cardId:null,faceDown:false,purse:0,lockUnused:true})),keys:0};
 let activeSlot=0,filter='all';
 const $=s=>document.querySelector(s);
 const tableau=$('#tableau'),dialog=$('#cardDialog'),cardList=$('#cardList'),search=$('#search');
@@ -99,16 +114,17 @@ function init(){
     node.querySelector('.select-card').addEventListener('click',()=>openDialog(i));
     node.querySelector('.face-down').addEventListener('change',e=>{state.slots[i].faceDown=e.target.checked;save();render();});
     node.querySelector('.purse').addEventListener('input',e=>{state.slots[i].purse=Math.max(0,+e.target.value||0);save();renderScores();});
+    node.querySelector('.lock-unused').addEventListener('change',e=>{state.slots[i].lockUnused=e.target.checked;save();renderScores();});
     tableau.appendChild(node);
   }
   $('#keys').addEventListener('input',e=>{state.keys=Math.max(0,+e.target.value||0);save();renderScores();});
-  $('#resetBtn').addEventListener('click',()=>{if(confirm('모든 입력을 초기화할까요?')){state.slots=Array.from({length:9},()=>({cardId:null,faceDown:false,purse:0}));state.keys=0;save();render();}});
+  $('#resetBtn').addEventListener('click',()=>{if(confirm('모든 입력을 초기화할까요?')){state.slots=Array.from({length:9},()=>({cardId:null,faceDown:false,purse:0,lockUnused:true}));state.keys=0;save();render();}});
   $('#clearSlotBtn').addEventListener('click',()=>{state.slots[activeSlot]={cardId:null,faceDown:false,purse:0};dialog.close();save();render();});
   search.addEventListener('input',renderCardList);
   document.querySelectorAll('.filters button').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('.filters button').forEach(x=>x.classList.toggle('active',x===b));renderCardList();}));
   load();render();
 }
-function load(){try{const x=JSON.parse(localStorage.getItem('castleComboScore'));if(x&&Array.isArray(x.slots)){state.slots=x.slots;state.keys=x.keys||0;}}catch(_){} $('#keys').value=state.keys;}
+function load(){try{const x=JSON.parse(localStorage.getItem('castleComboScore'));if(x&&Array.isArray(x.slots)){state.slots=x.slots.map(v=>({lockUnused:true,...v}));state.keys=x.keys||0;}}catch(_){} $('#keys').value=state.keys;}
 function save(){localStorage.setItem('castleComboScore',JSON.stringify(state));}
 function getCard(slot){return cards.find(c=>c.id===slot.cardId)||null;}
 function activeCards(){return state.slots.map((s,i)=>({slot:s,card:getCard(s),i})).filter(x=>x.card&&!x.slot.faceDown);}
@@ -117,6 +133,8 @@ function rowIndices(i){const r=Math.floor(i/3);return [r*3,r*3+1,r*3+2]}
 function colIndices(i){const c=i%3;return [c,c+3,c+6]}
 function crossIndices(i){return [...new Set([...rowIndices(i),...colIndices(i)])]}
 function countPlace(place){return activeCards().filter(x=>x.card.place===place).length}
+function unusedLockKeys(){return activeCards().filter(x=>x.card.lock&&x.slot.lockUnused!==false).length}
+function totalKeys(){return state.keys+unusedLockKeys()}
 function totalPurse(){return activeCards().reduce((n,x)=>n+(x.card.purse?Math.min(x.slot.purse,x.card.purse):0),0)}
 function posTags(i){const r=Math.floor(i/3),c=i%3,t=[];if(c===0)t.push('left');if(c===2)t.push('right');if(r===0)t.push('top');if(r===2)t.push('bottom');if(r===1)t.push('middleRow');if(c===1)t.push('middleCol');if((r===0||r===2)&&(c===0||c===2))t.push('corner');if(((r===0||r===2)&&c===1)||(r===1&&(c===0||c===2)))t.push('edge');return t}
 function minSet(counts,shields){return Math.min(...shields.map(s=>counts[s]||0))}
@@ -138,12 +156,20 @@ case'placePair':return Math.min(countPlace('castle'),countPlace('village'))*q.pe
 case'shieldSet':return minSet(all,q.shields)*q.per;
 case'identicalShieldSets':return Object.values(all).reduce((n,v)=>n+Math.floor(v/q.size),0)*q.per;
 case'hasFaceDown':return state.slots.some(s=>s.cardId&&s.faceDown)?q.points:0;
-case'keys':return state.keys*q.per;
+case'keys':return totalKeys()*q.per;
+case'rowCostSum':return rowIndices(i).reduce((n,j)=>{const s=state.slots[j],c=getCard(s);return n+(c&&!s.faceDown?c.cost:0)},0);
+case'colCostSum':return colIndices(i).reduce((n,j)=>{const s=state.slots[j],c=getCard(s);return n+(c&&!s.faceDown?c.cost:0)},0);
+case'lineHasShield':{const idx=q.axis==='row'?rowIndices(i):colIndices(i);return shieldCounts(idx)[q.shield]>0?q.points:0}
+case'lockCards':return activeCards().filter(x=>x.card.lock).length*q.per;
+case'distinctCosts':return new Set(activeCards().map(x=>x.card.cost)).size*q.per;
+case'noFaceDown':return state.slots.some(s=>s.cardId&&s.faceDown)?0:q.points;
+case'noDiscounts':return activeCards().some(x=>discountIds.has(x.card.id))?0:q.points;
+case'noPurseCards':return activeCards().some(x=>x.card.purse)?0:q.points;
 case'costAtLeast':return activeCards().filter(x=>x.card.cost>=q.cost).length*q.per;
 case'costExact':return activeCards().filter(x=>x.card.cost===q.cost).length*q.per;
 default:return 0}}
-function render(){state.slots.forEach((s,i)=>{const el=tableau.children[i],card=getCard(s);el.classList.toggle('face-down-card',s.faceDown);el.querySelector('.empty-text').hidden=!!card;el.querySelector('.selected-content').hidden=!card;el.querySelector('.slot-controls').hidden=!card;if(card){el.querySelector('.place').textContent=card.place==='castle'?'성':'마을';el.querySelector('.place').className=`place ${card.place}`;el.querySelector('.card-name').textContent=card.name;el.querySelector('.card-ko').textContent=`${card.ko} · 비용 ${card.cost}`;el.querySelector('.shields').innerHTML=card.shields.map(x=>`<span class="shield ${x}">${S[x]}</span>`).join('');el.querySelector('.formula').textContent=card.formula;el.querySelector('.face-down').checked=s.faceDown;const pl=el.querySelector('.purse-label'),inp=el.querySelector('.purse');pl.hidden=!card.purse;if(card.purse){inp.max=card.purse;inp.value=Math.min(s.purse,card.purse);pl.firstChild.textContent=`지갑 금(최대 ${card.purse}) `;}}});$('#keys').value=state.keys;renderScores()}
-function renderScores(){let total=0,rows=[];state.slots.forEach((s,i)=>{const card=getCard(s);let score=0;if(card&&!s.faceDown)score=calculateCardScore(card,i,s);total+=score;tableau.children[i].querySelector('.slot-score').textContent=`${score}점`;if(card)rows.push({i,card,score,faceDown:s.faceDown});});const keyScore=state.keys;$('#cardScore').textContent=total;$('#keyScore').textContent=keyScore;$('#totalScore').textContent=total+keyScore;const b=$('#breakdown');if(!rows.length){b.className='breakdown empty';b.textContent='카드를 선택하면 계산 내역이 표시됩니다.';return}b.className='breakdown';b.innerHTML=rows.map(x=>`<div class="breakdown-row"><span class="num">${x.i+1}</span><div><b>${x.card.name} · ${x.card.ko}</b><small>${x.faceDown?'뒷면 카드: 자체 점수 0점':x.card.formula}</small></div><strong>${x.score}점</strong></div>`).join('')+`<div class="breakdown-row"><span class="num">🔑</span><div><b>남은 열쇠</b><small>${state.keys}개 × 1점</small></div><strong>${keyScore}점</strong></div>`}
+function render(){state.slots.forEach((s,i)=>{const el=tableau.children[i],card=getCard(s);el.classList.toggle('face-down-card',s.faceDown);el.querySelector('.empty-text').hidden=!!card;el.querySelector('.selected-content').hidden=!card;el.querySelector('.slot-controls').hidden=!card;if(card){el.querySelector('.place').textContent=card.place==='castle'?'성':'마을';el.querySelector('.place').className=`place ${card.place}`;el.querySelector('.card-name').textContent=card.name;el.querySelector('.card-ko').textContent=`${card.ko} · 비용 ${card.cost}`;el.querySelector('.shields').innerHTML=card.shields.map(x=>`<span class="shield ${x}">${S[x]}</span>`).join('');el.querySelector('.formula').textContent=card.formula;el.querySelector('.face-down').checked=s.faceDown;const ll=el.querySelector('.lock-label'),li=el.querySelector('.lock-unused');ll.hidden=!card.lock||s.faceDown;li.checked=s.lockUnused!==false;const pl=el.querySelector('.purse-label'),inp=el.querySelector('.purse');pl.hidden=!card.purse;if(card.purse){inp.max=card.purse;inp.value=Math.min(s.purse,card.purse);pl.firstChild.textContent=`지갑 금(최대 ${card.purse}) `;}}});$('#keys').value=state.keys;renderScores()}
+function renderScores(){let total=0,rows=[];state.slots.forEach((s,i)=>{const card=getCard(s);let score=0;if(card&&!s.faceDown)score=calculateCardScore(card,i,s);total+=score;tableau.children[i].querySelector('.slot-score').textContent=`${score}점`;if(card)rows.push({i,card,score,faceDown:s.faceDown});});const looseKeys=state.keys,lockKeys=unusedLockKeys(),keyScore=looseKeys+lockKeys;$('#cardScore').textContent=total;$('#keyScore').textContent=keyScore;$('#totalScore').textContent=total+keyScore;const b=$('#breakdown');if(!rows.length){b.className='breakdown empty';b.textContent='카드를 선택하면 계산 내역이 표시됩니다.';return}b.className='breakdown';b.innerHTML=rows.map(x=>`<div class="breakdown-row"><span class="num">${x.i+1}</span><div><b>${x.card.name} · ${x.card.ko}</b><small>${x.faceDown?'뒷면 카드: 자체 점수 0점':x.card.formula}</small></div><strong>${x.score}점</strong></div>`).join('')+`<div class="breakdown-row"><span class="num">🔑</span><div><b>남은 열쇠</b><small>일반 ${looseKeys}개 + 미사용 잠금 열쇠 ${lockKeys}개</small></div><strong>${keyScore}점</strong></div>`}
 function openDialog(i){activeSlot=i;$('#slotLabel').textContent=`${Math.floor(i/3)+1}행 ${i%3+1}열`;search.value='';filter='all';document.querySelectorAll('.filters button').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'));renderCardList();dialog.showModal();setTimeout(()=>search.focus(),50)}
-function renderCardList(){const q=search.value.trim().toLowerCase();const used=new Set(state.slots.map((s,i)=>i===activeSlot?null:s.cardId));const list=cards.filter(c=>(filter==='all'||c.place===filter)&&(!q||`${c.name} ${c.ko}`.toLowerCase().includes(q)));cardList.innerHTML=list.map(c=>`<button type="button" class="card-option" data-id="${c.id}" ${used.has(c.id)?'disabled':''}><strong>${c.name} · ${c.ko}</strong><small>${c.place==='castle'?'성':'마을'} / 비용 ${c.cost} · ${c.formula}${used.has(c.id)?' · 이미 선택됨':''}</small><div class="mini-shields">${c.shields.map(x=>`<span class="shield ${x}">${S[x]}</span>`).join('')}</div></button>`).join('');cardList.querySelectorAll('.card-option:not([disabled])').forEach(b=>b.addEventListener('click',()=>{state.slots[activeSlot]={cardId:b.dataset.id,faceDown:false,purse:0};dialog.close();save();render();}))}
+function renderCardList(){const q=search.value.trim().toLowerCase();const used=new Set(state.slots.map((s,i)=>i===activeSlot?null:s.cardId));const list=cards.filter(c=>(filter==='all'||(filter==='expansion'?c.expansion:c.place===filter))&&(!q||`${c.name} ${c.ko} ${c.dutch||''}`.toLowerCase().includes(q)));cardList.innerHTML=list.map(c=>`<button type="button" class="card-option" data-id="${c.id}" ${used.has(c.id)?'disabled':''}><strong>${c.name} · ${c.ko}</strong><small>${c.place==='castle'?'성':'마을'} / 비용 ${c.cost}${c.expansion?' · 확장':''} · ${c.formula}${used.has(c.id)?' · 이미 선택됨':''}</small><div class="mini-shields">${c.shields.map(x=>`<span class="shield ${x}">${S[x]}</span>`).join('')}</div></button>`).join('');cardList.querySelectorAll('.card-option:not([disabled])').forEach(b=>b.addEventListener('click',()=>{state.slots[activeSlot]={cardId:b.dataset.id,faceDown:false,purse:0,lockUnused:true};dialog.close();save();render();}))}
 init();

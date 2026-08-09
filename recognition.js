@@ -1,6 +1,6 @@
 'use strict';
 
-/* Castle Combo photo recognizer v4
+/* Castle Combo photo recognizer v5
    Recognition pipeline:
    1) Detect each physical card border independently (no fixed 3x3 cell assumption).
    2) Perspective-warp each detected card to a normalized portrait image.
@@ -55,14 +55,14 @@ window.onOpenCvReady = onOpenCvReady;
 
 async function loadFeatures() {
   try {
-    const r = await fetch('data/card-features-v4.json?v=20260809-4');
+    const r = await fetch('data/card-layout-features-v5.json?v=20260809-5');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     photoState.features = await r.json();
-    setPhotoStatus(photoState.cvReady ? '카드 90장 하이브리드 인식 데이터 준비 완료.' : 'OpenCV를 불러오는 중…', 'ok');
+    setPhotoStatus(photoState.cvReady ? '카드 90장 고정 레이아웃 인식 데이터 준비 완료.' : 'OpenCV를 불러오는 중…', 'ok');
     analyzeBtn.disabled = !photoState.cvReady || !photoState.img;
   } catch (e) {
     console.error(e);
-    setPhotoStatus('카드 인식 데이터를 불러오지 못했습니다. data/card-features-v4.json 위치를 확인해주세요.', 'error');
+    setPhotoStatus('카드 인식 데이터를 불러오지 못했습니다. data/card-layout-features-v5.json 위치를 확인해주세요.', 'error');
   }
 }
 
@@ -155,13 +155,14 @@ function contourToCard(cnt, imgArea){
   const {q,w,h,ratio}=quadMetrics(pts);
   if(w<38||h<55) return null;
   // Perspective may distort the apparent ratio, so this is intentionally generous.
-  if(ratio<0.43 || ratio>0.88) return null;
+  if(ratio<0.50 || ratio>0.86) return null;
   const b=boundsOf(q), c=centerOf(q);
   if(b.width<=0||b.height<=0) return null;
   const rectangularity=area/(b.width*b.height);
   if(rectangularity<0.42) return null;
-  const ratioPenalty=Math.abs(ratio-0.70);
-  return {...b,quad:q,center:c,area,ratio,score:area*(1-Math.min(0.55,ratioPenalty))*Math.min(1,rectangularity+0.25)};
+  const expected=64/90;
+  const ratioFit=Math.exp(-Math.pow((ratio-expected)/0.105,2));
+  return {...b,quad:q,center:c,area,ratio,score:area*(0.35+0.65*ratioFit)*Math.min(1,rectangularity+0.25)};
 }
 
 function collectCandidatesFromBinary(binary, src, out){
@@ -227,13 +228,14 @@ function chooseNineCandidates(items){
     if(chosen.length===9){
       const areas=chosen.map(x=>x.area).sort((a,b)=>a-b), med=areas[4];
       const variance=chosen.reduce((s,x)=>s+Math.abs(x.area-med)/med,0)/9;
+      const ratioVariance=chosen.reduce((s,x)=>s+Math.abs(x.ratio-(64/90)),0)/9;
       const ys=[...chosen].sort((a,b)=>a.center.y-b.center.y);
       const rows=[ys.slice(0,3),ys.slice(3,6),ys.slice(6,9)];
       const rowSpread=rows.reduce((s,r)=>s+(Math.max(...r.map(x=>x.center.y))-Math.min(...r.map(x=>x.center.y))),0);
       const avgH=chosen.reduce((s,x)=>s+x.height,0)/9;
       const shapePenalty=rowSpread/Math.max(1,avgH);
       const quality=chosen.reduce((s,x)=>s+x.score,0)/(med*9);
-      const score=quality-variance*1.4-shapePenalty*0.55;
+      const score=quality-variance*1.15-ratioVariance*2.2-shapePenalty*0.55;
       if(score>bestScore){bestScore=score;best=[...chosen];}
       return;
     }
@@ -251,37 +253,6 @@ function sortGrid(items) {
   return rows.flat();
 }
 
-function decodeDescriptorBlock(block,key='_mat'){
-  if(!block||!block.descriptors||!block.rows)return null;
-  if(block[key]) return block[key];
-  const bin=atob(block.descriptors), arr=new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-  block[key]=cv.matFromArray(block.rows,block.cols,cv.CV_8UC1,arr);
-  return block[key];
-}
-function decodeFull(item){
-  if(item._mat)return item._mat;
-  const bin=atob(item.descriptors),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-  item._mat=cv.matFromArray(item.rows,item.cols,cv.CV_8UC1,arr);return item._mat;
-}
-
-function descriptorsForMat(mat,maxFeatures=900){
-  const gray=new cv.Mat(),kp=new cv.KeyPointVector(),des=new cv.Mat(),mask=new cv.Mat(),orb=new cv.ORB();
-  try{
-    orb.setMaxFeatures(maxFeatures);cv.cvtColor(mat,gray,cv.COLOR_RGBA2GRAY);cv.equalizeHist(gray,gray);orb.detectAndCompute(gray,mask,kp,des);return des.clone();
-  }finally{gray.delete();kp.delete();des.delete();mask.delete();orb.delete();}
-}
-function matchDescriptorPair(query,ref,matcher){
-  if(!query||!ref||query.rows<2||ref.rows<2)return 0;
-  const matches=new cv.DMatchVectorVector();
-  try{
-    matcher.knnMatch(query,ref,matches,2);let good=0,strong=0;
-    for(let i=0;i<matches.size();i++){
-      const v=matches.get(i);if(v.size()>=2){const m=v.get(0),n=v.get(1);if(m.distance<0.77*n.distance){good++;if(m.distance<46)strong++;}}v.delete();
-    }
-    return good+strong*0.35;
-  }finally{matches.delete();}
-}
 
 function roiClone(src,x,y,w,h){
   const xx=Math.max(0,Math.min(src.cols-1,Math.round(x))), yy=Math.max(0,Math.min(src.rows-1,Math.round(y)));
@@ -290,19 +261,19 @@ function roiClone(src,x,y,w,h){
 }
 
 function warpQuadMat(src,item){
-  const q=orderQuad(item.quad);
+  const q=orderQuad(item.quad), size=photoState.features.normalizedSize||[320,450], W=size[0],H=size[1];
   const srcPts=cv.matFromArray(4,1,cv.CV_32FC2,[q[0].x,q[0].y,q[1].x,q[1].y,q[2].x,q[2].y,q[3].x,q[3].y]);
-  const dstPts=cv.matFromArray(4,1,cv.CV_32FC2,[0,0,359,0,359,499,0,499]);
+  const dstPts=cv.matFromArray(4,1,cv.CV_32FC2,[0,0,W-1,0,W-1,H-1,0,H-1]);
   const M=cv.getPerspectiveTransform(srcPts,dstPts),out=new cv.Mat();
-  try{cv.warpPerspective(src,out,M,new cv.Size(360,500),cv.INTER_CUBIC,cv.BORDER_REPLICATE);return out;}
+  try{cv.warpPerspective(src,out,M,new cv.Size(W,H),cv.INTER_CUBIC,cv.BORDER_REPLICATE);return out;}
   finally{srcPts.delete();dstPts.delete();M.delete();}
 }
-
 function cropCenteredMat(src,item){
+  const size=photoState.features.normalizedSize||[320,450], W=size[0],H=size[1];
   const x=Math.max(0,Math.round(item.x)),y=Math.max(0,Math.round(item.y));
   const x2=Math.min(src.cols,Math.round(item.x+item.width)),y2=Math.min(src.rows,Math.round(item.y+item.height));
   const roi=src.roi(new cv.Rect(x,y,Math.max(1,x2-x),Math.max(1,y2-y))),out=new cv.Mat();
-  try{cv.resize(roi,out,new cv.Size(360,500),0,0,cv.INTER_AREA);return out;}finally{roi.delete();}
+  try{cv.resize(roi,out,new cv.Size(W,H),0,0,cv.INTER_AREA);return out;}finally{roi.delete();}
 }
 function cardMatFor(src,item){return item.quad?warpQuadMat(src,item):cropCenteredMat(src,item);}
 
@@ -315,74 +286,68 @@ function levenshtein(a,b){
 }
 function textSimilarity(a,b){const aa=normalizeKoreanText(a),bb=normalizeKoreanText(b);if(!aa||!bb)return 0;return Math.max(0,1-levenshtein(aa,bb)/Math.max(aa.length,bb.length));}
 
+function b64Bytes(s){const bin=atob(s),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
+function ensureTemplateVectors(){
+  if(photoState.features._decoded)return;
+  for(const c of photoState.features.cards){c._regions={};for(const [k,v] of Object.entries(c.regions))c._regions[k]=b64Bytes(v);}
+  photoState.features._decoded=true;
+}
+function signatureForRegion(cardMat,rect){
+  const [rx,ry,rw,rh]=rect,W=cardMat.cols,H=cardMat.rows,sz=photoState.features.signatureSize||24;
+  const roi=roiClone(cardMat,rx*W,ry*H,rw*W,rh*H),gray=new cv.Mat(),eq=new cv.Mat(),gx=new cv.Mat(),gy=new cv.Mat(),mag=new cv.Mat(),norm=new cv.Mat(),small=new cv.Mat();
+  try{
+    cv.cvtColor(roi,gray,cv.COLOR_RGBA2GRAY);cv.equalizeHist(gray,eq);
+    cv.Sobel(eq,gx,cv.CV_32F,1,0,3);cv.Sobel(eq,gy,cv.CV_32F,0,1,3);cv.magnitude(gx,gy,mag);cv.normalize(mag,norm,0,255,cv.NORM_MINMAX,cv.CV_8U);
+    cv.resize(norm,small,new cv.Size(sz,sz),0,0,cv.INTER_AREA);return new Uint8Array(small.data);
+  }finally{roi.delete();gray.delete();eq.delete();gx.delete();gy.delete();mag.delete();norm.delete();small.delete();}
+}
+function corrSimilarity(a,b){
+  if(!a||!b||a.length!==b.length)return 0;let ma=0,mb=0;for(let i=0;i<a.length;i++){ma+=a[i];mb+=b[i];}ma/=a.length;mb/=b.length;
+  let num=0,da=0,db=0;for(let i=0;i<a.length;i++){const x=a[i]-ma,y=b[i]-mb;num+=x*y;da+=x*x;db+=y*y;}const den=Math.sqrt(da*db);return den?Math.max(0,num/den):0;
+}
+function allRegionSignatures(cardMat){
+  const out={};for(const [k,r] of Object.entries(photoState.features.regions))out[k]=signatureForRegion(cardMat,r);return out;
+}
 function matToCanvas(mat){const c=document.createElement('canvas');c.width=mat.cols;c.height=mat.rows;cv.imshow(c,mat);return c;}
 function prepareNameForOcr(cardMat){
-  // Korean card name is printed vertically on the left banner. Crop it, rotate clockwise and binarize.
-  const strip=roiClone(cardMat,8,65,100,285),rot=new cv.Mat(),gray=new cv.Mat(),bin=new cv.Mat(),scaled=new cv.Mat();
-  try{
-    cv.rotate(strip,rot,cv.ROTATE_90_CLOCKWISE);cv.cvtColor(rot,gray,cv.COLOR_RGBA2GRAY);
-    cv.threshold(gray,bin,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);cv.resize(bin,scaled,new cv.Size(bin.cols*3,bin.rows*3),0,0,cv.INTER_CUBIC);
-    return scaled.clone();
-  }finally{strip.delete();rot.delete();gray.delete();bin.delete();scaled.delete();}
+  const r=photoState.features.regions.name,W=cardMat.cols,H=cardMat.rows;
+  const strip=roiClone(cardMat,r[0]*W,r[1]*H,r[2]*W,r[3]*H),rot=new cv.Mat(),gray=new cv.Mat(),bin=new cv.Mat(),scaled=new cv.Mat();
+  try{cv.rotate(strip,rot,cv.ROTATE_90_CLOCKWISE);cv.cvtColor(rot,gray,cv.COLOR_RGBA2GRAY);cv.threshold(gray,bin,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);cv.resize(bin,scaled,new cv.Size(bin.cols*3,bin.rows*3),0,0,cv.INTER_CUBIC);return scaled.clone();}
+  finally{strip.delete();rot.delete();gray.delete();bin.delete();scaled.delete();}
 }
-
 async function ensureOcrWorker(){
-  if(photoState.ocrWorker)return photoState.ocrWorker;
-  if(typeof Tesseract==='undefined')throw new Error('Tesseract.js를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
-  setPhotoStatus('한글 OCR 엔진을 처음 불러오는 중… 최초 1회는 시간이 조금 걸릴 수 있습니다.','working');
-  photoState.ocrWorker=await Tesseract.createWorker(['kor','eng'],1,{logger:m=>{
-    if(m.status==='loading language traineddata'&&m.progress) setPhotoStatus(`한글 OCR 데이터 불러오는 중… ${Math.round(m.progress*100)}%`,'working');
-  }});
-  photoState.ocrReady=true;return photoState.ocrWorker;
+  if(photoState.ocrWorker)return photoState.ocrWorker;if(typeof Tesseract==='undefined')throw new Error('Tesseract.js를 불러오지 못했습니다.');
+  setPhotoStatus('한글 카드명 OCR 엔진을 불러오는 중…','working');
+  photoState.ocrWorker=await Tesseract.createWorker(['kor'],1,{logger:m=>{if(m.status==='loading language traineddata'&&m.progress)setPhotoStatus(`한글 OCR 데이터 ${Math.round(m.progress*100)}%`,'working');}});return photoState.ocrWorker;
 }
-
 async function ocrCardName(cardMat){
-  try{
-    const worker=await ensureOcrWorker(),nameMat=prepareNameForOcr(cardMat),canvas=matToCanvas(nameMat);nameMat.delete();
-    await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM.SINGLE_LINE,preserve_interword_spaces:'0'});
-    const {data}=await worker.recognize(canvas);return normalizeKoreanText(data.text||'');
-  }catch(e){console.warn('OCR failed',e);return '';}
+  try{const worker=await ensureOcrWorker(),m=prepareNameForOcr(cardMat),canvas=matToCanvas(m);m.delete();await worker.setParameters({tessedit_pageseg_mode:Tesseract.PSM.SINGLE_LINE,preserve_interword_spaces:'0'});const {data}=await worker.recognize(canvas);return normalizeKoreanText(data.text||'');}
+  catch(e){console.warn('OCR failed',e);return '';}
 }
-
-function regionDescriptors(cardMat){
-  const cost=roiClone(cardMat,0,0,115,120),shield=roiClone(cardMat,235,20,125,170),name=roiClone(cardMat,10,65,95,275);
-  try{return{cost:descriptorsForMat(cost,500),shield:descriptorsForMat(shield,600),name:descriptorsForMat(name,600)};}
-  finally{cost.delete();shield.delete();name.delete();}
-}
-
-function buildHybridScores(cardMat,ocrText){
-  const full=descriptorsForMat(cardMat,1200),regions=regionDescriptors(cardMat),matcher=new cv.BFMatcher(cv.NORM_HAMMING,false),raw=[];
-  try{
-    for(const item of photoState.features.cards){
-      const fullScore=matchDescriptorPair(full,decodeFull(item),matcher);
-      const costScore=matchDescriptorPair(regions.cost,decodeDescriptorBlock(item.costRegion,'_costMat'),matcher);
-      const shieldScore=matchDescriptorPair(regions.shield,decodeDescriptorBlock(item.shieldRegion,'_shieldMat'),matcher);
-      const nameVisual=matchDescriptorPair(regions.name,decodeDescriptorBlock(item.nameRegion,'_nameMat'),matcher);
-      const textScore=ocrText?textSimilarity(ocrText,item.ko):0;
-      raw.push({item,fullScore,costScore,shieldScore,nameVisual,textScore});
-    }
-  }finally{full.delete();regions.cost.delete();regions.shield.delete();regions.name.delete();matcher.delete();}
-
-  const max=(k)=>Math.max(1,...raw.map(x=>x[k]||0));
-  const mf=max('fullScore'),mc=max('costScore'),ms=max('shieldScore'),mn=max('nameVisual');
-  for(const r of raw){
-    const visual=0.34*(r.fullScore/mf)+0.16*(r.costScore/mc)+0.17*(r.shieldScore/ms)+0.13*(r.nameVisual/mn);
-    // OCR is powerful when readable, but never allowed to overwhelm all visual evidence by itself.
-    r.hybrid=visual+(ocrText?0.20*r.textScore:0);
-    // Strong near-exact Korean name matches get a modest bonus.
-    if(r.textScore>=0.82)r.hybrid+=0.10;
+function scoreOrientation(cardMat,ocrText=''){
+  ensureTemplateVectors();const q=allRegionSignatures(cardMat),weights={art:.27,name:.23,cost:.10,shield:.12,effect:.13,score:.15},raw=[];
+  for(const item of photoState.features.cards){
+    const parts={};let visual=0;for(const [k,w] of Object.entries(weights)){parts[k]=corrSimilarity(q[k],item._regions[k]);visual+=w*parts[k];}
+    const txt=ocrText?textSimilarity(ocrText,item.ko):0;
+    // Exact layout + card-name OCR: OCR is a strong bonus, but bad OCR never destroys good visual evidence.
+    const hybrid=visual+(ocrText?0.30*txt:0)+(txt>=0.84?0.10:0);
+    raw.push({item,hybrid,textScore:txt,...parts});
   }
-  raw.sort((a,b)=>b.hybrid-a.hybrid);
-  return raw;
+  raw.sort((a,b)=>b.hybrid-a.hybrid);return raw;
 }
-
+function rotate180(src){const out=new cv.Mat();cv.rotate(src,out,cv.ROTATE_180);return out;}
 async function recognizeCard(cardMat){
-  const ocrText=await ocrCardName(cardMat),scores=buildHybridScores(cardMat,ocrText);
+  // Determine orientation from layout signatures first, then OCR only the better orientation.
+  const s0=scoreOrientation(cardMat,''),r180=rotate180(cardMat);let s1;
+  try{s1=scoreOrientation(r180,'');}finally{}
+  const use180=(s1[0]?.hybrid||0)>(s0[0]?.hybrid||0)+0.035, chosen=use180?r180:cardMat;
+  const ocrText=await ocrCardName(chosen),scores=scoreOrientation(chosen,ocrText);
+  if(!use180)r180.delete();
+  else r180.delete();
   const a=scores[0]?.hybrid||0,b=scores[1]?.hybrid||0,margin=a-b;
-  const confidence=Math.max(0,Math.min(99,Math.round(43+margin*165+Math.max(0,a-.45)*45)));
-  return {top:scores.slice(0,8),confidence,needsReview:a<0.52||margin<0.075,ocrText};
+  const confidence=Math.max(0,Math.min(99,Math.round(38+margin*175+Math.max(0,a-.40)*55)));
+  return {top:scores.slice(0,8),confidence,needsReview:a<0.48||margin<0.07,ocrText,rotated180:use180};
 }
-
 function overlayItems(items){
   fitCanvasToImage(photoState.img);photoCtx.save();photoCtx.lineWidth=4;photoCtx.font='bold 18px system-ui';
   items.forEach((it,i)=>{
@@ -404,7 +369,7 @@ function candidateButton(c,slotIndex){
   const used=new Set(photoState.detections.map((r,i)=>i===slotIndex?null:r.top[0]?.item.id).filter(Boolean)),disabled=used.has(c.item.id);
   const textPct=Math.round((c.textScore||0)*100),hybridPct=Math.round((c.hybrid||0)*100);
   return `<button type="button" class="candidate" data-slot="${slotIndex}" data-id="${c.item.id}" ${disabled?'disabled':''}>
-    <b>${c.item.ko}</b><small>종합 ${hybridPct} · 이름 ${textPct}% · 전체 ${c.fullScore.toFixed(0)} · 비용기호 ${c.costScore.toFixed(0)} · 방패기호 ${c.shieldScore.toFixed(0)}${disabled?' · 다른 칸에서 선택됨':''}</small>
+    <b>${c.item.ko}</b><small>종합 ${hybridPct} · OCR ${textPct}% · 그림 ${Math.round(c.art*100)} · 카드명 ${Math.round(c.name*100)} · 비용 ${Math.round(c.cost*100)} · 방패 ${Math.round(c.shield*100)} · 효과 ${Math.round(c.effect*100)} · 점수 ${Math.round(c.score*100)}${disabled?' · 다른 칸에서 선택됨':''}</small>
   </button>`;
 }
 
@@ -429,7 +394,7 @@ async function recognizeItems(items){
   try{
     const results=[];
     for(let i=0;i<items.length;i++){
-      setPhotoStatus(`${i+1}/9 카드 분석 중… 테두리 보정 + 카드명 OCR + 기호 비교`,'working');
+      setPhotoStatus(`${i+1}/9 카드 분석 중… 64×90 규격 보정 + 고정 레이아웃 6영역 비교`,'working');
       const crop=cardMatFor(src,items[i]);
       try{results.push(await recognizeCard(crop));}finally{crop.delete();}
       await new Promise(r=>setTimeout(r,0));
@@ -444,7 +409,7 @@ analyzeBtn.addEventListener('click',async()=>{
   if(!photoState.cvReady||!photoState.features||!photoState.img)return;
   analyzeBtn.disabled=true;applyBtn.hidden=true;recognitionResults.innerHTML='';
   try{
-    setPhotoStatus('사진 전체에서 카드 테두리를 개별적으로 찾는 중…','working');
+    setPhotoStatus('64×90mm 카드 비율을 기준으로 카드 테두리를 개별 검출하는 중…','working');
     const src=matFromDisplayedImage();let items;
     try{items=detectCardQuads(src);items=chooseNineCandidates(items);items=sortGrid(items);}finally{src.delete();}
     photoState.detectedItems=items;

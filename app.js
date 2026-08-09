@@ -131,10 +131,10 @@ function load(){try{const x=JSON.parse(localStorage.getItem('castleComboScore'))
 function save(){localStorage.setItem('castleComboScore',JSON.stringify(state));}
 function getCard(slot){return cards.find(c=>c.id===slot.cardId)||null;}
 function isCardUsed(cardId,exceptIndex=-1){return state.slots.some((s,i)=>i!==exceptIndex&&s.cardId===cardId);}
-function clearSlot(i){state.slots[i]={cardId:null,faceDown:false,purse:0,lockUnused:true};save();render();}
+function clearSlot(i){state.slots[i]={cardId:null,faceDown:false,backType:null,purse:0,lockUnused:true};save();render();}
 function chooseCard(i,cardId){
   if(isCardUsed(cardId,i)){alert('이미 다른 칸에서 선택한 카드입니다. 같은 카드는 중복해서 선택할 수 없습니다.');return false;}
-  state.slots[i]={cardId,faceDown:false,purse:0,lockUnused:true};save();render();return true;
+  state.slots[i]={cardId,faceDown:false,backType:null,purse:0,lockUnused:true};save();render();return true;
 }
 function activeCards(){return state.slots.map((s,i)=>({slot:s,card:getCard(s),i})).filter(x=>x.card&&!x.slot.faceDown);}
 function shieldCounts(indices=null){const out=Object.fromEntries(Object.keys(S).map(k=>[k,0]));activeCards().filter(x=>!indices||indices.includes(x.i)).forEach(x=>x.card.shields.forEach(s=>out[s]++));return out;}
@@ -164,14 +164,14 @@ case'placeCards':return countPlace(q.place)*q.per;
 case'placePair':return Math.min(countPlace('castle'),countPlace('village'))*q.per;
 case'shieldSet':return minSet(all,q.shields)*q.per;
 case'identicalShieldSets':return Object.values(all).reduce((n,v)=>n+Math.floor(v/q.size),0)*q.per;
-case'hasFaceDown':return state.slots.some(s=>s.cardId&&s.faceDown)?q.points:0;
+case'hasFaceDown':return state.slots.some(s=>s.faceDown)?q.points:0;
 case'keys':return totalKeys()*q.per;
 case'rowCostSum':return rowIndices(i).reduce((n,j)=>{const s=state.slots[j],c=getCard(s);return n+(c&&!s.faceDown?c.cost:0)},0);
 case'colCostSum':return colIndices(i).reduce((n,j)=>{const s=state.slots[j],c=getCard(s);return n+(c&&!s.faceDown?c.cost:0)},0);
 case'lineHasShield':{const idx=q.axis==='row'?rowIndices(i):colIndices(i);return shieldCounts(idx)[q.shield]>0?q.points:0}
 case'lockCards':return activeCards().filter(x=>x.card.lock).length*q.per;
 case'distinctCosts':return new Set(activeCards().map(x=>x.card.cost)).size*q.per;
-case'noFaceDown':return state.slots.some(s=>s.cardId&&s.faceDown)?0:q.points;
+case'noFaceDown':return state.slots.some(s=>s.faceDown)?0:q.points;
 case'noDiscounts':return activeCards().some(x=>discountIds.has(x.card.id))?0:q.points;
 case'noPurseCards':return activeCards().some(x=>x.card.purse)?0:q.points;
 case'costAtLeast':return activeCards().filter(x=>x.card.cost>=q.cost).length*q.per;
@@ -179,10 +179,17 @@ case'costExact':return activeCards().filter(x=>x.card.cost===q.cost).length*q.pe
 default:return 0}}
 function render(){
   state.slots.forEach((s,i)=>{
-    const el=tableau.children[i],card=getCard(s);
+    const el=tableau.children[i],card=getCard(s),backOnly=!card&&s.faceDown&&s.backType;
     el.classList.toggle('face-down-card',!!s.faceDown);
     const empty=el.querySelector('.empty-text'),selected=el.querySelector('.selected-content'),controls=el.querySelector('.slot-controls');
-    empty.hidden=!!card;selected.hidden=!card;controls.hidden=!card;
+    empty.hidden=!!card||!!backOnly;selected.hidden=!card&&!backOnly;controls.hidden=!card;
+    if(backOnly){
+      const place=el.querySelector('.place');place.textContent=s.backType==='castle'?'성':'마을';place.className=`place ${s.backType}`;
+      el.querySelector('.card-name').textContent=s.backType==='castle'?'성 카드 뒷면':'마을 카드 뒷면';
+      el.querySelector('.card-ko').textContent='사진에서 뒷면으로 인식됨';el.querySelector('.shields').innerHTML='';el.querySelector('.formula').textContent='카드 정보·방패·비용·자체 점수 무효';
+      el.querySelector('.face-down').checked=true;el.querySelector('.lock-label').hidden=true;el.querySelector('.purse-label').hidden=true;el.querySelector('.slot-score').textContent='0점';
+      return;
+    }
     if(!card){
       el.querySelector('.card-name').textContent='';el.querySelector('.card-ko').textContent='';el.querySelector('.shields').innerHTML='';el.querySelector('.formula').textContent='';
       el.querySelector('.face-down').checked=false;el.querySelector('.lock-label').hidden=true;el.querySelector('.purse-label').hidden=true;el.querySelector('.slot-score').textContent='0점';
@@ -198,7 +205,7 @@ function render(){
   });
   $('#keys').value=state.keys;renderScores();
 }
-function renderScores(){let total=0,rows=[];state.slots.forEach((s,i)=>{const card=getCard(s);let score=0;if(card&&!s.faceDown)score=calculateCardScore(card,i,s);total+=score;tableau.children[i].querySelector('.slot-score').textContent=`${score}점`;if(card)rows.push({i,card,score,faceDown:s.faceDown});});const looseKeys=state.keys,lockKeys=unusedLockKeys(),keyScore=looseKeys+lockKeys;$('#cardScore').textContent=total;$('#keyScore').textContent=keyScore;$('#totalScore').textContent=total+keyScore;const b=$('#breakdown');if(!rows.length){b.className='breakdown empty';b.textContent='카드를 선택하면 계산 내역이 표시됩니다.';return}b.className='breakdown';b.innerHTML=rows.map(x=>`<div class="breakdown-row"><span class="num">${x.i+1}</span><div><b>${x.card.ko}</b><small>${x.faceDown?'뒷면 카드: 자체 점수 0점':x.card.formula}</small></div><strong>${x.score}점</strong></div>`).join('')+`<div class="breakdown-row"><span class="num">🔑</span><div><b>남은 열쇠</b><small>일반 ${looseKeys}개 + 미사용 잠금 열쇠 ${lockKeys}개</small></div><strong>${keyScore}점</strong></div>`}
+function renderScores(){let total=0,rows=[];state.slots.forEach((s,i)=>{const card=getCard(s);let score=0;if(card&&!s.faceDown)score=calculateCardScore(card,i,s);total+=score;tableau.children[i].querySelector('.slot-score').textContent=`${score}점`;if(card)rows.push({i,name:card.ko,desc:s.faceDown?'뒷면 카드: 자체 점수 0점':card.formula,score});else if(s.faceDown&&s.backType)rows.push({i,name:s.backType==='castle'?'성 카드 뒷면':'마을 카드 뒷면',desc:'뒷면 카드: 카드 정보·방패·비용·자체 점수 무효',score:0});});const looseKeys=state.keys,lockKeys=unusedLockKeys(),keyScore=looseKeys+lockKeys;$('#cardScore').textContent=total;$('#keyScore').textContent=keyScore;$('#totalScore').textContent=total+keyScore;const b=$('#breakdown');if(!rows.length){b.className='breakdown empty';b.textContent='카드를 선택하면 계산 내역이 표시됩니다.';return}b.className='breakdown';b.innerHTML=rows.map(x=>`<div class="breakdown-row"><span class="num">${x.i+1}</span><div><b>${x.name}</b><small>${x.desc}</small></div><strong>${x.score}점</strong></div>`).join('')+`<div class="breakdown-row"><span class="num">🔑</span><div><b>남은 열쇠</b><small>일반 ${looseKeys}개 + 미사용 잠금 열쇠 ${lockKeys}개</small></div><strong>${keyScore}점</strong></div>`}
 function openDialog(i){activeSlot=i;$('#slotLabel').textContent=`${Math.floor(i/3)+1}행 ${i%3+1}열`;search.value='';filter='all';document.querySelectorAll('.filters button').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'));renderCardList();dialog.showModal();setTimeout(()=>search.focus(),50)}
 function renderCardList(){const q=search.value.trim().toLowerCase();const used=new Set(state.slots.filter((_,i)=>i!==activeSlot).map(s=>s.cardId).filter(Boolean));const list=cards.filter(c=>(filter==='all'||(filter==='base'?!c.expansion:(filter==='expansion'?c.expansion:c.place===filter)))&&(!q||c.ko.toLowerCase().includes(q)));cardList.innerHTML=list.map(c=>`<button type="button" class="card-option" data-id="${c.id}" ${used.has(c.id)?'disabled':''}><strong>${c.ko}</strong><small>${c.expansion?'확장팩':'기본판'} · ${c.place==='castle'?'성':'마을'} / 비용 ${c.cost} · ${c.formula}${used.has(c.id)?' · 이미 선택됨':''}</small><div class="mini-shields">${c.shields.map(x=>`<span class="shield ${x}">${S[x]}</span>`).join('')}</div></button>`).join('');cardList.querySelectorAll('.card-option:not([disabled])').forEach(b=>b.addEventListener('click',()=>{if(chooseCard(activeSlot,b.dataset.id))dialog.close();}))}
 init();

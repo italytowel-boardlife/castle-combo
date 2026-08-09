@@ -12,7 +12,7 @@
     <div>
       <p class="eyebrow">CASTLE COMBO</p>
       <h1>점수 계산기</h1>
-      <p>기본판과 <strong>Out of the Oubliette 확장팩 12장</strong>을 포함해 카드별 종료 점수와 열쇠 점수를 자동 계산합니다.</p><p id="cardCountInfo" class="version-info">카드 데이터를 불러오는 중…</p>
+      <p>기본판과 <strong>감옥밖으로 확장팩 12장</strong>을 포함해 카드별 종료 점수와 열쇠 점수를 자동 계산합니다.</p><p id="cardCountInfo" class="version-info">카드 데이터를 불러오는 중…</p>
     </div>
     <button id="resetBtn" class="ghost">전체 초기화</button>
   </header>
@@ -26,7 +26,6 @@
       <div class="photo-actions">
         <label class="primary file-button">사진 촬영 / 선택<input id="photoInput" type="file" accept="image/*" capture="environment" hidden></label>
         <button id="analyzePhotoBtn" type="button" class="primary" disabled>자동 분석</button>
-        <button id="manualModeBtn" type="button" class="ghost">수동 4점 지정</button>
         <button id="applyRecognizedBtn" type="button" class="success" hidden>인식 결과를 배열에 적용</button>
       </div>
       <p id="photoStatus" class="photo-status">OpenCV와 카드 인식 데이터를 준비하는 중…</p>
@@ -35,7 +34,6 @@
         <canvas id="photoCanvas" aria-label="업로드한 카드 배열 사진"></canvas>
       </div>
       <div id="recognitionResults" class="recognition-results"></div>
-      <details class="photo-help"><summary>카드 테두리를 9장 모두 찾지 못했을 때</summary><p>자동 분석은 3×3 칸을 가정하지 않고 사진 전체에서 각 카드의 테두리를 먼저 찾습니다. 그래도 9장을 모두 찾지 못하면 <b>수동 4점 지정</b>을 눌러 네 모서리 카드의 중심을 차례로 지정하세요.</p></details>
     </section>
     <section class="summary-card">
       <div class="input-box">
@@ -100,7 +98,7 @@
         <button type="button" data-filter="base">기본판 78장</button>
         <button type="button" data-filter="castle">성</button>
         <button type="button" data-filter="village">마을</button>
-        <button type="button" data-filter="expansion">확장팩 12장 🔒</button>
+        <button type="button" data-filter="expansion">감옥밖으로 확장팩 12장 🔒</button>
       </div>
       <div id="cardList" class="card-list"></div>
       <button id="clearSlotBtn" type="button" class="danger full">이 칸 비우기</button>
@@ -129,9 +127,9 @@
     </article>
   </template>
 
-  <script src="app.js?v=20260809-photo5"></script>
+  <script src="app.js?v=20260809-photo7"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="recognition.js?v=20260809-photo6"></script>
+  <script src="recognition.js?v=20260809-photo7"></script>
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()" type="text/javascript"></script>
 </body>
 </html>

@@ -246,7 +246,7 @@ function overlayRects(rects){
 
 function candidateButton(c,slotIndex){
   return `<button type="button" class="candidate" data-slot="${slotIndex}" data-id="${c.item.id}">
-    <b>${c.item.ko}</b><small>${c.item.name} · 특징점 ${c.score.toFixed(1)}</small>
+    <b>${c.item.ko}</b><small>특징점 ${c.score.toFixed(1)}</small>
   </button>`;
 }
 
@@ -255,7 +255,7 @@ function renderRecognition(results){
     const best=r.top[0];
     return `<article class="recognition-card ${r.needsReview?'review':''}" data-index="${i}">
       <div class="recognition-head"><span>${Math.floor(i/3)+1}행 ${i%3+1}열</span><strong>${r.needsReview?'확인 필요':'자동 인식'}</strong></div>
-      <h3>${best.item.ko}</h3><p>${best.item.name}</p>
+      <h3>${best.item.ko}</h3>
       <div class="confidence"><i style="width:${r.confidence}%"></i></div><small>신뢰도 지표 ${r.confidence}%</small>
       <details ${r.needsReview?'open':''}><summary>후보 변경</summary>${r.top.map(c=>candidateButton(c,i)).join('')}</details>
     </article>`;

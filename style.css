@@ -18,3 +18,8 @@
 
 /* v3 UI hardening */
 [hidden]{display:none!important}.slot{contain:layout paint}.select-card{width:100%;overflow:hidden}.selected-content{min-width:0}.card-name,.card-ko,.formula{overflow-wrap:anywhere}.card-option:disabled,.candidate:disabled{opacity:.42;cursor:not-allowed;background:#eef1f2}.slot-controls[hidden],.selected-content[hidden],.empty-text[hidden]{display:none!important}
+
+.recognition-other{width:100%;margin-top:8px;border:1px solid #4f7f98;background:#eef7fb;color:#234f67;border-radius:9px;padding:8px 10px;font-weight:800;cursor:pointer}.recognition-other:hover{background:#deeff7}
+
+/* v9 photo shooting guidance */
+.photo-tip{margin:14px 0 4px;padding:12px 14px;border:1px solid #c9dce6;border-radius:12px;background:#f3f9fc;color:#294b5e;line-height:1.55}.photo-tip strong{display:block;margin-bottom:3px;color:#173f56}.photo-tip span{font-size:14px}
